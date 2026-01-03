@@ -1,0 +1,16 @@
+{
+  "avatars": [
+    {"id": "default", "name": "Default", "url": "/avatars/default.png"},
+    {"id": "red", "name": "Red", "url": "/avatars/red.png"},
+    {"id": "orange", "name": "Orange", "url": "/avatars/orange.png"},
+    {"id": "green", "name": "Green", "url": "/avatars/green.png"},
+    {"id": "teal", "name": "Teal", "url": "/avatars/teal.png"},
+    {"id": "blue", "name": "Blue", "url": "/avatars/blue.png"},
+    {"id": "purple", "name": "Purple", "url": "/avatars/purple.png"},
+    {"id": "pink", "name": "Pink", "url": "/avatars/pink.png"},
+    {"id": "kitten", "name": "Kitten","url": "/avatars/kitten.png"},
+    {"id": "man", "name": "Yellow Man","url": "/avatars/man.png"},
+    {"id": "juice", "name": "Juice Sipper","url": "/avatars/juice.png"},
+    {"id": "chill", "name": "Relax Dude!","url": "/avatars/chill.png"}
+  ]
+}

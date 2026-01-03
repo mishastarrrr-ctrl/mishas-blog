@@ -512,20 +512,20 @@ async def websocket_endpoint(
     
     new_token = create_access_token(data={"sub": str(user.id)}) if not token else None
     
-    await websocket.send_json({
-        "type": "connected",
-        "data": {
-            "user_id": str(user.id),
-            "username": user.username,
-            "avatar": user.avatar or "default",
-            "is_admin": user.is_admin,
-            "token": new_token,
-            "online_users": manager.get_online_users(),
-            "online_count": manager.get_online_count()
-        }
-    })
-    
     try:
+        await websocket.send_json({
+            "type": "connected",
+            "data": {
+                "user_id": str(user.id),
+                "username": user.username,
+                "avatar": user.avatar or "default",
+                "is_admin": user.is_admin,
+                "token": new_token,
+                "online_users": manager.get_online_users(),
+                "online_count": manager.get_online_count()
+            }
+        })
+
         while True:
             data = await websocket.receive_json()
             
