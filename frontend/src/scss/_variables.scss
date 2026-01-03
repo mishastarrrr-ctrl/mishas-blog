@@ -1,0 +1,72 @@
+// ============================================
+// VARIABLES & THEMING
+// ============================================
+
+:root {
+  // --- Default Theme: iMessage ---
+  --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  
+  --color-bg: #FFFFFF;
+  --color-header-bg: rgba(245, 245, 245, 0.85);
+  --color-header-border: #C6C6C8;
+  --header-height: 54px;
+  --header-shadow: none;
+  --header-backdrop: blur(20px);
+  
+  --color-text: #000000;
+  --color-text-secondary: #8E8E93;
+  
+  --bubble-sent-bg: #007AFF;
+  --bubble-sent-text: #FFFFFF;
+  --bubble-received-bg: #E9E9EB;
+  --bubble-received-text: #000000;
+  
+  --radius-bubble: 18px;
+  --radius-bubble-sm: 4px;
+  
+  --input-container-bg: #F2F2F7;
+  --input-bg: #FFFFFF;
+  --input-border: #C6C6C8;
+  --input-radius: 20px;
+  
+  --avatar-radius: 50%;
+  --avatar-border: 2px solid transparent;
+  --avatar-border-hover: 2px solid rgba(0, 0, 0, 0.1);
+  --avatar-border-active: 2px solid var(--bubble-sent-bg);
+
+  --animation-message-enter: iosMessageEnter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animation-message-move: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+[data-theme="material"] {
+  // --- Theme: MD3---
+  --font-family: 'Roboto', sans-serif;
+  
+  --color-bg: #FFFBFE;
+  --color-header-bg: #F3EDF7;
+  --color-header-border: transparent;
+  --header-height: 64px;
+  --header-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  --header-backdrop: none;
+  
+  --color-text: #1C1B1F;
+  --color-text-secondary: #49454F;
+  
+  --bubble-sent-bg: #6750A4;
+  --bubble-sent-text: #FFFFFF;
+  --bubble-received-bg: #E8DEF8;
+  --bubble-received-text: #1D192B;
+  
+  --radius-bubble: 24px; 
+  --radius-bubble-sm: 4px;
+  
+  --input-container-bg: #F3EDF7;
+  --input-bg: #EADDFF;
+  --input-border: transparent;
+  --input-radius: 28px;
+  
+  --avatar-radius: 12px;
+
+  --animation-message-enter: md3MessageEnter 0.6s cubic-bezier(0.05, 0.7, 0.1, 1.0);
+  --animation-message-move: transform 0.6s cubic-bezier(0.05, 0.7, 0.1, 1.0);
+}

@@ -1,0 +1,87 @@
+services:
+  # === Database ===
+  db:
+    image: postgres:16-alpine
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - blog-network
+
+  # === Object Storage (MinIO) ===
+  minio:
+    image: minio/minio:latest
+    restart: always
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - blog-network
+
+  # === Backend ===
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      DEBUG: "false"
+      DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      DATABASE_URL_SYNC: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      MINIO_SECURE: "false"
+      MINIO_PUBLIC_URL: ""
+      SECRET_KEY: ${SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD}
+    volumes:
+      - ./avatars:/app/avatars:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - blog-network
+
+  # === Frontend (with Nginx) ===
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "${PORT}:80"
+    depends_on:
+      - backend
+    networks:
+      - blog-network
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  blog-network:
+    driver: bridge

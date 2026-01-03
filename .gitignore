@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Uploads (keep directory structure)
+uploads/*
+!uploads/.gitkeep
+
+# Database
+*.db
+*.sqlite
+
+# Misc
+.cache/
+coverage/
