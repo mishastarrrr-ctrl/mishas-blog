@@ -48,7 +48,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def generate_guest_id() -> str:
-    """generate random guest ID like guest_582ggdwk"""
+    """generate random guest ID (like guest_582ggdwk)"""
     chars = string.ascii_lowercase + string.digits
     random_part = ''.join(secrets.choice(chars) for _ in range(8))
     return f"guest_{random_part}"
@@ -83,12 +83,39 @@ async def get_current_admin(
     user: Optional[User] = Depends(get_current_user)
 ) -> User:
     """require admin authentication"""
-    if not user or not user.is_admin:
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Admin authentication required",
+            detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    if not (user.is_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    
+    return user
+
+
+async def get_user_with_post_permission(
+    user: Optional[User] = Depends(get_current_user)
+) -> User:
+    """require user with posting permission (admin)"""
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not user.can_post:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to post messages. Contact an admin to upgrade your account.",
+        )
+    
     return user
 
 

@@ -24,7 +24,8 @@ export const useAuthStore = defineStore('auth', () => {
   const mustChangePassword = ref(false)
   
   const isLoggedIn = computed(() => !!token.value)
-  const isAdmin = computed(() => user.value?.is_admin || false)
+  const isAdmin = computed(() => user.value?.is_admin)
+  const canPost = computed(() => user.value?.can_post ?? user.value?.is_admin)
   
   function setToken(newToken) {
     token.value = newToken
@@ -118,7 +119,9 @@ export const useAuthStore = defineStore('auth', () => {
       user.value.avatar = avatar
     }
   }
-  
+
+  // --- Admin Actions ---
+
   function logout() {
     setToken(null)
     user.value = null
@@ -142,12 +145,13 @@ export const useAuthStore = defineStore('auth', () => {
     mustChangePassword,
     isLoggedIn,
     isAdmin,
+    canPost,
     login,
     changePassword,
     createGuestSession,
     fetchUser,
     updateAvatar,
     logout,
-    handleWsToken
+    handleWsToken,
   }
 })

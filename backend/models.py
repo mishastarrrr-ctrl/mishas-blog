@@ -1,9 +1,10 @@
-from sqlalchemy import String, Boolean, DateTime, Text, ForeignKey, JSON, Index
+from sqlalchemy import String, Boolean, DateTime, Text, ForeignKey, JSON, Index, Enum as SQLEnum
 from sqlalchemy.orm import relationship, declarative_base, Mapped, mapped_column
 from sqlalchemy.sql import func
 import uuid
 from datetime import datetime
 from typing import List, Optional
+import enum
 
 Base = declarative_base()
 
@@ -25,7 +26,7 @@ class User(Base):
         unique=True, 
         nullable=True,
         index=True
-    )  #admin only
+    )
     username: Mapped[str] = mapped_column(
         String(50), 
         unique=True, 
@@ -35,7 +36,7 @@ class User(Base):
     password_hash: Mapped[Optional[str]] = mapped_column(
         String(255), 
         nullable=True
-    )  #admin only
+    )
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     avatar: Mapped[str] = mapped_column(String(50), default="default")
@@ -60,6 +61,46 @@ class User(Base):
         back_populates="user", 
         cascade="all, delete-orphan"
     )
+    
+    @property
+    def can_post(self) -> bool:
+        """check if user has permission to post messages."""
+        return self.is_admin
+
+class CustomEmoji(Base):
+    __tablename__ = "custom_emojis"
+    
+    id: Mapped[str] = mapped_column(
+        String(36), 
+        primary_key=True, 
+        default=generate_uuid
+    )
+    name: Mapped[str] = mapped_column(
+        String(50), 
+        unique=True, 
+        nullable=False,
+        index=True
+    )
+    url: Mapped[str] = mapped_column(
+        String(500), 
+        nullable=False
+    )
+    object_name: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True
+    )
+    created_by_id: Mapped[Optional[str]] = mapped_column(
+        String(36), 
+        ForeignKey("users.id", ondelete="SET NULL"), 
+        nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        server_default=func.now()
+    )
+    
+    #relationships
+    created_by: Mapped[Optional["User"]] = relationship("User")
 
 
 class Message(Base):
@@ -106,7 +147,7 @@ class Message(Base):
         JSON, 
         default=list,
         nullable=False
-    )  #[{type: "image", url: "...", name: "..."}]
+    )  #[{type: "image"|"gif"|"audio"|"video"|"file", url: "...", name: "...", gif_id?: "..."}]
     
     #relationships
     author: Mapped["User"] = relationship("User", back_populates="messages")
@@ -149,9 +190,15 @@ class Reaction(Base):
         index=True
     )
     emoji: Mapped[str] = mapped_column(
-        String(10), 
+        String(50),
         nullable=False
-    )  #unicode emoji
+    )
+    #for custom emoji reactions
+    custom_emoji_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("custom_emojis.id", ondelete="SET NULL"),
+        nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 
         server_default=func.now()
@@ -160,6 +207,7 @@ class Reaction(Base):
     #relationships
     message: Mapped["Message"] = relationship("Message", back_populates="reactions")
     user: Mapped["User"] = relationship("User", back_populates="reactions")
+    custom_emoji: Mapped[Optional["CustomEmoji"]] = relationship("CustomEmoji")
 
     __table_args__ = (
         Index('ix_reactions_message_user_emoji', message_id, user_id, emoji, unique=True),

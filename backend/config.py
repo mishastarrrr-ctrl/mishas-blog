@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     minio_bucket: str = "blog"
     minio_secure: bool = False
     
-    #Public URL for attachments (should be the nginx proxy URL in production)
+    #public URL for attachments (should be the nginx proxy URL in production)
     #In production => https://yourdomain.com
     #nginx proxy will route /blog/* to MinIO
     minio_public_url: str = ""
@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     
     #uploads
     max_file_size: int = 50 * 1024 * 1024
+    
+    #GIF Support - Tenor API
+    #get API key from: https://developers.google.com/tenor/guides/quickstart
+    tenor_api_key: str = ""
     
     class Config:
         env_file = ".env"

@@ -17,7 +17,7 @@ services:
     networks:
       - blog-network
 
-  # === Object Storage (MinIO) ===
+  # === Storage ===
   minio:
     image: minio/minio:latest
     restart: always
@@ -55,6 +55,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD}
+      TENOR_API_KEY: ${TENOR_API_KEY}
     depends_on:
       db:
         condition: service_healthy
@@ -63,7 +64,7 @@ services:
     networks:
       - blog-network
 
-  # === Frontend (with Nginx) ===
+  # === Frontend ===
   frontend:
     build:
       context: ./frontend

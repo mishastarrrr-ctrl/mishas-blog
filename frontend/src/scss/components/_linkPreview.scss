@@ -1,0 +1,134 @@
+// ============================================
+// LINK PREVIEW
+// ============================================
+
+.link-preview {
+  margin-top: 8px;
+  max-width: 100%;
+}
+
+.link-preview-card {
+  display: flex;
+  flex-direction: row;
+  background: rgba(0,0,0,0.04);
+  border-radius: 6px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: background-color 0.15s;
+  border: 1px solid rgba(0,0,0,0.05);
+  cursor: pointer;
+  max-width: 320px; 
+  height: 80px;
+
+  &:hover {
+    background: rgba(0,0,0,0.08);
+  }
+}
+
+.link-preview-image-container {
+  width: 80px;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.link-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.link-preview-image-placeholder {
+  width: 80px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.05);
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.link-preview-info {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.link-preview-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+  color: #007AFF;
+}
+
+.link-preview-domain {
+  font-size: 11px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// --- Material Design 3 Overrides ---
+
+.link-preview.material {
+  .link-preview-card {
+    flex-direction: column;
+    width: 100%;
+    max-width: 280px;
+    height: auto;
+    border-radius: 12px;
+    background: var(--md3-surface, #FFFFFF);
+    border: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    
+    &:hover {
+      background: var(--md3-surface, #FFFFFF);
+      filter: brightness(0.98);
+    }
+  }
+
+  .link-preview-image-container {
+    width: 100%;
+    height: 150px;
+    border-radius: 0;
+  }
+
+  .link-preview-image-placeholder {
+    width: 100%;
+    height: 150px;
+  }
+
+  .link-preview-info {
+    padding: 12px 16px;
+    justify-content: flex-start;
+  }
+
+  .link-preview-title {
+    font-size: 14px;
+    margin-bottom: 4px;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    color: var(--md3-on-surface, #1D1B20);
+    line-height: 1.4;
+  }
+
+  .link-preview-domain {
+    font-size: 12px;
+    color: var(--md3-on-surface-variant, #49454F);
+  }
+}

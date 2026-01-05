@@ -13,6 +13,7 @@ export const useChatStore = defineStore('chat', () => {
   const loading = ref(false)
   const hasMore = ref(true)
   const avatars = ref([])
+  const customEmojis = ref([])
   
   const authStore = useAuthStore()
 
@@ -27,6 +28,62 @@ export const useChatStore = defineStore('chat', () => {
       console.error('Failed to fetch avatars:', e)
     }
   }
+
+  async function fetchCustomEmojis() {
+    try {
+      const res = await fetch('/api/emojis')
+      if (res.ok) {
+        const data = await res.json()
+        customEmojis.value = data.emojis || []
+      }
+    } catch (e) {
+      console.error('Failed to fetch custom emojis:', e)
+    }
+  }
+
+  async function uploadCustomEmoji(file, name) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('name', name)
+
+    const res = await fetch('/api/emojis', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authStore.token}` },
+      body: formData
+    })
+
+    if (!res.ok) {
+      throw new Error('Failed to upload emoji')
+    }
+    return await res.json()
+  }
+
+  async function deleteCustomEmoji(emojiId) {
+    const res = await fetch(`/api/emojis/${emojiId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${authStore.token}` }
+    })
+
+    if (!res.ok) {
+      throw new Error('Failed to delete emoji')
+    }
+  }
+
+  //helper to attach custom emoji URLs to reactions if missing
+  function hydrateMessageReactions(msg) {
+    if (!msg.reactions) return msg
+    
+    msg.reactions = msg.reactions.map(r => {
+      if (!r.custom_emoji_url) {
+        const custom = customEmojis.value.find(e => e.name === r.emoji)
+        if (custom) {
+          r.custom_emoji_url = custom.url
+        }
+      }
+      return r
+    })
+    return msg
+  }
   
   async function fetchMessages(before = null) {
     loading.value = true
@@ -38,12 +95,15 @@ export const useChatStore = defineStore('chat', () => {
       if (res.ok) {
         const data = await res.json()
         
+        //hydrate messages with custom emoji URLs
+        const hydratedMessages = (data.messages || []).map(hydrateMessageReactions)
+        
         if (before) {
-          messages.value = [...data.messages, ...messages.value]
+          messages.value = [...hydratedMessages, ...messages.value]
         } else {
           //initial load
-          messages.value = data.messages
-          pinnedMessages.value = data.pinned_messages || []
+          messages.value = hydratedMessages
+          pinnedMessages.value = (data.pinned_messages || []).map(hydrateMessageReactions)
         }
         
         hasMore.value = data.has_more
@@ -53,10 +113,18 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
   
-  async function sendMessage(content, files = [], replyToId = null) {
+  async function sendMessage(content, files = [], replyToId = null, gif = null) {
     const formData = new FormData()
     if (content) formData.append('content', content)
     if (replyToId) formData.append('reply_to_id', replyToId)
+    
+    //handle GIF
+    if (gif) {
+      formData.append('gif_url', gif.url)
+      formData.append('gif_id', gif.id)
+      if (gif.preview_url) formData.append('gif_preview_url', gif.preview_url)
+    }
+    
     files.forEach(file => formData.append('files', file))
     
     const res = await fetch('/api/messages', {
@@ -105,19 +173,57 @@ export const useChatStore = defineStore('chat', () => {
     return await res.json()
   }
   
-  async function toggleReaction(messageId, emoji) {
+  async function toggleReaction(messageId, emoji, customEmojiId = null) {
+    //if no customEmojiId provided => try to find it in store
+    if (!customEmojiId) {
+      const custom = customEmojis.value.find(e => e.name === emoji)
+      if (custom) {
+        customEmojiId = custom.id
+      }
+    }
+
     const res = await fetch(`/api/messages/${messageId}/reactions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authStore.token}`
       },
-      body: JSON.stringify({ emoji })
+      body: JSON.stringify({ emoji, custom_emoji_id: customEmojiId })
     })
     
     if (!res.ok) {
       throw new Error('Failed to toggle reaction')
     }
+  }
+
+  async function searchGifs(query, pos = null) {
+    const params = new URLSearchParams({ q: query, limit: '20' })
+    if (pos) params.append('pos', pos)
+    
+    const res = await fetch(`/api/gifs/search?${params}`, {
+      headers: { 'Authorization': `Bearer ${authStore.token}` }
+    })
+    
+    if (!res.ok) {
+      throw new Error('Failed to search GIFs')
+    }
+    
+    return await res.json()
+  }
+
+  async function getTrendingGifs(pos = null) {
+    const params = new URLSearchParams({ limit: '20' })
+    if (pos) params.append('pos', pos)
+    
+    const res = await fetch(`/api/gifs/trending?${params}`, {
+      headers: { 'Authorization': `Bearer ${authStore.token}` }
+    })
+    
+    if (!res.ok) {
+      throw new Error('Failed to get trending GIFs')
+    }
+    
+    return await res.json()
   }
   
   function connectWebSocket() {
@@ -162,15 +268,21 @@ export const useChatStore = defineStore('chat', () => {
             id: data.data.user_id,
             username: data.data.username,
             avatar: data.data.avatar,
-            is_admin: data.data.is_admin
+            is_admin: data.data.is_admin,
+            can_post: data.data.can_post
           }
+        } else {
+          //update can_post status
+          authStore.user.can_post = data.data.can_post
         }
         break
         
       case 'new_message':
-        messages.value.push(data.data)
+        //hydrate before adding
+        const hydratedMsg = hydrateMessageReactions(data.data)
+        messages.value.push(hydratedMsg)
         if (data.data.is_pinned) {
-          pinnedMessages.value.unshift(data.data)
+          pinnedMessages.value.unshift(hydratedMsg)
         }
         break
         
@@ -202,21 +314,24 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       case 'reaction_added':
-        updateMessageReaction(data.data.message_id, data.data.emoji, data.data.username, data.data.avatar, 'add')
+        updateMessageReaction(data.data.message_id, data.data.emoji, data.data.username, data.data.avatar, 'add', data.data.custom_emoji_url)
         break
         
       case 'reaction_removed':
-        updateMessageReaction(data.data.message_id, data.data.emoji, data.data.username, data.data.avatar, 'remove')
+        updateMessageReaction(data.data.message_id, data.data.emoji, data.data.username, data.data.avatar, 'remove', data.data.custom_emoji_url)
         break
         
       case 'user_join':
         onlineCount.value = data.data.online_count
-        onlineUsers.value.push({
-          user_id: data.data.user_id,
-          username: data.data.username,
-          avatar: data.data.avatar,
-          is_admin: data.data.is_admin
-        })
+        //check if user already in list (shouldnt be => but just in case)
+        if (!onlineUsers.value.find(u => u.user_id === data.data.user_id)) {
+          onlineUsers.value.push({
+            user_id: data.data.user_id,
+            username: data.data.username,
+            avatar: data.data.avatar,
+            is_admin: data.data.is_admin,
+          })
+        }
         break
         
       case 'user_leave':
@@ -238,10 +353,23 @@ export const useChatStore = defineStore('chat', () => {
         if (user) user.avatar = data.data.avatar
         break
       }
+
+      case 'custom_emoji_added':
+        customEmojis.value.push(data.data)
+        break
+
+      case 'custom_emoji_removed':
+        customEmojis.value = customEmojis.value.filter(e => e.id !== data.data.id)
+        break
     }
   }
   
-  function updateMessageReaction(messageId, emoji, username, avatar, action) {
+  function updateMessageReaction(messageId, emoji, username, avatar, action, customEmojiUrl = null) {
+    if (!customEmojiUrl) {
+      const custom = customEmojis.value.find(e => e.name === emoji)
+      if (custom) customEmojiUrl = custom.url
+    }
+
     //update both lists
     const targets = [
       messages.value.find(m => m.id === messageId),
@@ -261,12 +389,17 @@ export const useChatStore = defineStore('chat', () => {
             if (!reaction.user_avatars) reaction.user_avatars = []
             reaction.user_avatars.push(avatar)
           }
+          //ensure URL is set if found late
+          if (!reaction.custom_emoji_url && customEmojiUrl) {
+            reaction.custom_emoji_url = customEmojiUrl
+          }
         } else {
           message.reactions.push({ 
             emoji, 
             count: 1, 
             users: [username],
-            user_avatars: [avatar]
+            user_avatars: [avatar],
+            custom_emoji_url: customEmojiUrl
           })
         }
       } else if (action === 'remove' && reaction) {
@@ -317,6 +450,10 @@ export const useChatStore = defineStore('chat', () => {
     //fallback to default pattern
     return `/avatars/${avatarId}.png`
   }
+
+  function getCustomEmoji(name) {
+    return customEmojis.value.find(e => e.name === name)
+  }
   
   return {
     messages,
@@ -328,16 +465,23 @@ export const useChatStore = defineStore('chat', () => {
     loading,
     hasMore,
     avatars,
+    customEmojis,
     fetchAvatars,
+    fetchCustomEmojis,
+    uploadCustomEmoji,
+    deleteCustomEmoji,
     fetchMessages,
     sendMessage,
     deleteMessage,
     pinMessage,
     toggleReaction,
+    searchGifs,
+    getTrendingGifs,
     connectWebSocket,
     sendTyping,
     updateAvatar,
     disconnect,
-    getAvatarUrl
+    getAvatarUrl,
+    getCustomEmoji
   }
 })

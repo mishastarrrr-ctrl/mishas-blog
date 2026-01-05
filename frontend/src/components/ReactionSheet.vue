@@ -14,7 +14,6 @@ const emit = defineEmits(['close'])
 const chatStore = useChatStore()
 const authStore = useAuthStore()
 
-//flatten reactions to show individual user entries
 const reactionDetails = computed(() => {
   if (!props.message.reactions) return []
   
@@ -23,6 +22,7 @@ const reactionDetails = computed(() => {
     reaction.users.forEach((username, index) => {
       details.push({
         emoji: reaction.emoji,
+        customEmojiUrl: reaction.custom_emoji_url,
         username: username,
         avatar: reaction.user_avatars ? reaction.user_avatars[index] : 'default',
         isMe: authStore.user?.username === username
@@ -39,12 +39,16 @@ function handleDelete() {
   }
 }
 
+function handlePin() {
+  chatStore.pinMessage(props.message.id)
+  emit('close')
+}
+
 async function removeReaction(emoji) {
   try {
     await chatStore.toggleReaction(props.message.id, emoji)
-    //if no more reactions => close sheet
     if (props.message.reactions.length <= 1 && props.message.reactions[0].count <= 1) {
-        emit('close')
+      emit('close')
     }
   } catch (e) {
     console.error(e)
@@ -57,7 +61,7 @@ function getAvatarUrl(avatarId) {
 </script>
 
 <template>
-  <div class="reaction-sheet-overlay">
+  <div class="reaction-sheet-overlay" @click.self="emit('close')">
     <div class="reaction-sheet-backdrop" @click="emit('close')"></div>
     
     <div class="reaction-sheet">
@@ -66,12 +70,12 @@ function getAvatarUrl(avatarId) {
       </div>
       
       <div class="reaction-sheet-header">
-        <h3 class="reaction-sheet-title">Reactions</h3>
+        <h3 class="reaction-sheet-title">{{ reactionDetails.length ? 'Reactions' : 'Message Actions' }}</h3>
       </div>
 
       <div class="reaction-sheet-list">
         <div v-if="reactionDetails.length === 0" class="reaction-sheet-empty">
-          No reactions
+          No reactions yet
         </div>
         
         <div 
@@ -87,7 +91,10 @@ function getAvatarUrl(avatarId) {
           </div>
           
           <div class="reaction-sheet-right">
-            <span class="reaction-sheet-emoji">{{ item.emoji }}</span>
+            <span v-if="item.customEmojiUrl" class="reaction-sheet-custom-emoji">
+              <img :src="item.customEmojiUrl" :alt="item.emoji" />
+            </span>
+            <span v-else class="reaction-sheet-emoji">{{ item.emoji }}</span>
             <button 
               v-if="item.isMe" 
               @click="removeReaction(item.emoji)"
@@ -100,14 +107,15 @@ function getAvatarUrl(avatarId) {
       </div>
 
       <div v-if="isAdmin" class="reaction-sheet-footer">
-         <button @click="handleDelete" class="delete-btn">
-           <Icon name="trash" :size="20" />
-           Delete Message
-         </button>
+        <button @click="handlePin" class="action-btn-sheet" :class="{ 'active': message.is_pinned }">
+          <Icon name="pin" :size="20" />
+          {{ message.is_pinned ? 'Unpin Message' : 'Pin Message' }}
+        </button>
+        <button @click="handleDelete" class="delete-btn">
+          <Icon name="trash" :size="20" />
+          Delete Message
+        </button>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped lang="scss">
-</style>

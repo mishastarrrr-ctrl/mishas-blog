@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -11,15 +11,16 @@ from datetime import datetime, timezone
 import json
 import os
 import logging
+import httpx
 
 from config import get_settings
 from database import get_db, init_db
-from models import User, Message, Reaction
+from models import User, Message, Reaction, CustomEmoji
 from schemas import (
     LoginRequest, PasswordChangeRequest, TokenResponse,
     GuestCreate, UserResponse, MessageResponse,
     MessageList, ReactionCreate, Attachment, MessageReplyInfo,
-    CommandResponse
+    CommandResponse, CustomEmojiResponse, GifSearchResult, GifSearchResponse
 )
 from auth import (
     verify_password, hash_password, create_access_token,
@@ -129,7 +130,14 @@ async def create_guest(request: GuestCreate = GuestCreate(), db: AsyncSession = 
 async def get_me(user: User = Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return user
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        is_admin=user.is_admin,
+        can_post=user.can_post,
+        avatar=user.avatar or "default",
+        created_at=user.created_at
+    )
 
 
 @app.patch("/api/auth/avatar")
@@ -139,6 +147,220 @@ async def update_avatar(avatar: str, user: User = Depends(get_current_user), db:
     user.avatar = avatar
     await db.commit()
     return {"message": "Avatar updated", "avatar": avatar}
+
+
+# ============ GIF ROUTES ============
+
+@app.get("/api/gifs/search", response_model=GifSearchResponse)
+async def search_gifs(
+    q: str = Query(..., min_length=1, description="Search query"),
+    limit: int = Query(20, ge=1, le=50),
+    pos: Optional[str] = Query(None, description="Pagination position"),
+    user: User = Depends(get_current_user)
+):
+    """search for GIFs using Tenor API"""
+    if not settings.tenor_api_key:
+        raise HTTPException(
+            status_code=503, 
+            detail="GIF search not configured. Please set TENOR_API_KEY."
+        )
+    
+    async with httpx.AsyncClient() as client:
+        params = {
+            "key": settings.tenor_api_key,
+            "q": q,
+            "limit": limit,
+            "media_filter": "gif,tinygif",
+            "contentfilter": "medium"
+        }
+        if pos:
+            params["pos"] = pos
+        
+        try:
+            response = await client.get(
+                "https://tenor.googleapis.com/v2/search",
+                params=params,
+                timeout=10.0
+            )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Tenor API error: {e}")
+            raise HTTPException(status_code=503, detail="GIF search temporarily unavailable")
+    
+    results = []
+    for item in data.get("results", []):
+        media_formats = item.get("media_formats", {})
+        gif = media_formats.get("gif", {})
+        tinygif = media_formats.get("tinygif", {})
+        
+        if gif.get("url"):
+            results.append(GifSearchResult(
+                id=item.get("id", ""),
+                title=item.get("title", ""),
+                url=gif.get("url", ""),
+                preview_url=tinygif.get("url", gif.get("url", "")),
+                width=gif.get("dims", [0, 0])[0],
+                height=gif.get("dims", [0, 0])[1]
+            ))
+    
+    return GifSearchResponse(
+        results=results,
+        next=data.get("next")
+    )
+
+
+@app.get("/api/gifs/trending", response_model=GifSearchResponse)
+async def trending_gifs(
+    limit: int = Query(20, ge=1, le=50),
+    pos: Optional[str] = Query(None),
+    user: User = Depends(get_current_user)
+):
+    """get trending GIFs"""
+    if not settings.tenor_api_key:
+        raise HTTPException(status_code=503, detail="GIF search not configured")
+    
+    async with httpx.AsyncClient() as client:
+        params = {
+            "key": settings.tenor_api_key,
+            "limit": limit,
+            "media_filter": "gif,tinygif",
+            "contentfilter": "medium"
+        }
+        if pos:
+            params["pos"] = pos
+        
+        try:
+            response = await client.get(
+                "https://tenor.googleapis.com/v2/featured",
+                params=params,
+                timeout=10.0
+            )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Tenor API error: {e}")
+            raise HTTPException(status_code=503, detail="GIF search temporarily unavailable")
+    
+    results = []
+    for item in data.get("results", []):
+        media_formats = item.get("media_formats", {})
+        gif = media_formats.get("gif", {})
+        tinygif = media_formats.get("tinygif", {})
+        
+        if gif.get("url"):
+            results.append(GifSearchResult(
+                id=item.get("id", ""),
+                title=item.get("title", ""),
+                url=gif.get("url", ""),
+                preview_url=tinygif.get("url", gif.get("url", "")),
+                width=gif.get("dims", [0, 0])[0],
+                height=gif.get("dims", [0, 0])[1]
+            ))
+    
+    return GifSearchResponse(results=results, next=data.get("next"))
+
+
+# ============ CUSTOM EMOJI ROUTES ============
+
+@app.get("/api/emojis")
+async def list_custom_emojis(db: AsyncSession = Depends(get_db)):
+    """list all custom emojis"""
+    result = await db.execute(
+        select(CustomEmoji).order_by(CustomEmoji.name)
+    )
+    emojis = result.scalars().all()
+    return {"emojis": [CustomEmojiResponse.model_validate(e) for e in emojis]}
+
+
+@app.post("/api/emojis", response_model=CustomEmojiResponse)
+async def create_custom_emoji(
+    name: str = Form(...),
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    #validate name
+    import re
+    if not re.match(r'^[a-zA-Z0-9_]{2,50}$', name):
+        raise HTTPException(
+            status_code=400, 
+            detail="Emoji name must be 2-50 alphanumeric characters or underscores"
+        )
+    
+    #check if name exists
+    existing = await db.execute(select(CustomEmoji).where(CustomEmoji.name == name))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Emoji name already exists")
+    
+    #validate file
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    file_data = await file.read()
+    if len(file_data) > settings.max_file_size:
+        raise HTTPException(
+            status_code=400,
+            detail="File exceeds maximum allowed size (5mb)"
+        )
+    
+    #upload to storage
+    object_name = upload_file(file_data, f"{name}.png", file.content_type, "emojis")
+    file_url = get_file_url(object_name)
+    
+    emoji = CustomEmoji(
+        name=name,
+        url=file_url,
+        object_name=object_name,
+        created_by_id=user.id
+    )
+    db.add(emoji)
+    await db.commit()
+    await db.refresh(emoji)
+    
+    logger.info(f"Created custom emoji :{name}: by {user.username}")
+    
+    #broadcast new emoji to all clients
+    await manager.broadcast({
+        "type": "custom_emoji_added",
+        "data": {"id": emoji.id, "name": emoji.name, "url": emoji.url}
+    })
+    
+    return emoji
+
+
+@app.delete("/api/emojis/{emoji_id}")
+async def delete_custom_emoji(
+    emoji_id: str,
+    user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """delete a custom emoji (admin only)"""
+    result = await db.execute(select(CustomEmoji).where(CustomEmoji.id == emoji_id))
+    emoji = result.scalar_one_or_none()
+    
+    if not emoji:
+        raise HTTPException(status_code=404, detail="Emoji not found")
+    
+    #delete from storage
+    if emoji.object_name:
+        try:
+            delete_file(emoji.object_name)
+        except Exception as e:
+            logger.warning(f"Failed to delete emoji file: {e}")
+    
+    await db.delete(emoji)
+    await db.commit()
+    
+    logger.info(f"Deleted custom emoji :{emoji.name}:")
+    
+    #broadcast emoji removal
+    await manager.broadcast({
+        "type": "custom_emoji_removed",
+        "data": {"id": emoji_id, "name": emoji.name}
+    })
+    
+    return {"message": "Emoji deleted"}
 
 
 # ============ MESSAGE ROUTES ============
@@ -153,7 +375,9 @@ def build_message_response(message: Message) -> MessageResponse:
                 "emoji": reaction.emoji, 
                 "count": 0, 
                 "users": [],
-                "user_avatars": []
+                "user_avatars": [],
+                #add custom emoji URL if present
+                "custom_emoji_url": reaction.custom_emoji.url if reaction.custom_emoji else None
             }
         reaction_map[reaction.emoji]["count"] += 1
         if reaction.user:
@@ -195,6 +419,7 @@ async def get_messages(limit: int = 50, before: Optional[str] = None, db: AsyncS
         pinned_query = select(Message).options(
             selectinload(Message.author),
             selectinload(Message.reactions).selectinload(Reaction.user),
+            selectinload(Message.reactions).selectinload(Reaction.custom_emoji), # Load custom emoji
             selectinload(Message.parent).selectinload(Message.author)
         ).where(Message.is_pinned == True).order_by(Message.created_at.desc())
         
@@ -205,6 +430,7 @@ async def get_messages(limit: int = 50, before: Optional[str] = None, db: AsyncS
     query = select(Message).options(
         selectinload(Message.author),
         selectinload(Message.reactions).selectinload(Reaction.user),
+        selectinload(Message.reactions).selectinload(Reaction.custom_emoji), # Load custom emoji
         selectinload(Message.parent).selectinload(Message.author)
     ).order_by(Message.created_at.desc()).limit(limit + 1)
     
@@ -267,6 +493,9 @@ async def handle_slash_command(
 async def create_message(
     content: Optional[str] = Form(None),
     reply_to_id: Optional[str] = Form(None),
+    gif_url: Optional[str] = Form(None),  #for GIF messages
+    gif_id: Optional[str] = Form(None),
+    gif_preview_url: Optional[str] = Form(None),
     files: List[UploadFile] = File(default=[]),
     user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
@@ -288,13 +517,24 @@ async def create_message(
             content = args
             is_pinned_init = True
 
-    if not content and not files:
+    if not content and not files and not gif_url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Message must have content or attachments"
+            detail="Message must have content, attachments, or a GIF"
         )
     
     attachments = []
+    
+    #handle GIF attachment
+    if gif_url:
+        attachments.append({
+            "type": "gif",
+            "url": gif_url,
+            "name": "GIF",
+            "gif_id": gif_id,
+            "preview_url": gif_preview_url
+        })
+    
     for file in files:
         if file.filename:
             content_type = file.content_type or "application/octet-stream"
@@ -309,7 +549,7 @@ async def create_message(
             
             file_data = await file.read()
             
-            # Check file size
+            #check file size
             if len(file_data) > settings.max_file_size:
                 raise HTTPException(
                     status_code=400,
@@ -341,6 +581,7 @@ async def create_message(
         select(Message).options(
             selectinload(Message.author),
             selectinload(Message.reactions).selectinload(Reaction.user),
+            selectinload(Message.reactions).selectinload(Reaction.custom_emoji),
             selectinload(Message.parent).selectinload(Message.author)
         ).where(Message.id == message.id)
     )
@@ -358,7 +599,7 @@ async def toggle_pin_message(
     user: User = Depends(get_current_admin), 
     db: AsyncSession = Depends(get_db)
 ):
-    """Toggle pin status for a message."""
+    """toggle pin status for a message"""
     result = await db.execute(select(Message).where(Message.id == message_id))
     message = result.scalar_one_or_none()
     
@@ -425,13 +666,22 @@ async def add_reaction(
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
-    if not request.emoji or len(request.emoji) > 10:
+    if not request.emoji or len(request.emoji) > 50:
         raise HTTPException(status_code=400, detail="Invalid emoji")
     
     result = await db.execute(select(Message).where(Message.id == message_id))
     message = result.scalar_one_or_none()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
+    
+    #check for custom emoji
+    custom_emoji = None
+    custom_emoji_url = None
+    if request.custom_emoji_id:
+        result = await db.execute(select(CustomEmoji).where(CustomEmoji.id == request.custom_emoji_id))
+        custom_emoji = result.scalar_one_or_none()
+        if custom_emoji:
+            custom_emoji_url = custom_emoji.url
     
     result = await db.execute(
         select(Reaction).where(
@@ -452,12 +702,18 @@ async def add_reaction(
                 "emoji": request.emoji, 
                 "user_id": str(user.id), 
                 "username": user.username,
-                "avatar": user.avatar or "default"
+                "avatar": user.avatar or "default",
+                "custom_emoji_url": custom_emoji_url
             }
         })
         return {"message": "Reaction removed", "action": "removed"}
     
-    reaction = Reaction(message_id=message_id, user_id=user.id, emoji=request.emoji)
+    reaction = Reaction(
+        message_id=message_id, 
+        user_id=user.id, 
+        emoji=request.emoji,
+        custom_emoji_id=request.custom_emoji_id
+    )
     db.add(reaction)
     await db.commit()
     
@@ -468,7 +724,8 @@ async def add_reaction(
             "emoji": request.emoji, 
             "user_id": str(user.id), 
             "username": user.username,
-            "avatar": user.avatar or "default"
+            "avatar": user.avatar or "default",
+            "custom_emoji_url": custom_emoji_url
         }
     })
     return {"message": "Reaction added", "action": "added"}
@@ -482,7 +739,7 @@ async def websocket_endpoint(
     token: Optional[str] = None, 
     db: AsyncSession = Depends(get_db)
 ):
-    """WebSocket endpoint for real-time updates."""
+    """WebSocket endpoint for real-time updates"""
     user = None
     
     if token:
@@ -520,6 +777,7 @@ async def websocket_endpoint(
                 "username": user.username,
                 "avatar": user.avatar or "default",
                 "is_admin": user.is_admin,
+                "can_post": user.can_post,
                 "token": new_token,
                 "online_users": manager.get_online_users(),
                 "online_count": manager.get_online_count()
@@ -533,7 +791,7 @@ async def websocket_endpoint(
                 await manager.broadcast({
                     "type": "typing",
                     "data": {"user_id": str(user.id), "username": user.username}
-                }, exclude=str(user.id))
+                })
             
             elif data.get("type") == "update_avatar":
                 new_avatar = data.get("avatar", "default")
@@ -555,7 +813,7 @@ async def websocket_endpoint(
 
 @app.get("/api/avatars")
 async def get_available_avatars():
-    """Get list of available avatars."""
+    """get list of available avatars"""
     try:
         if os.path.exists(settings.avatars_config_path):
             with open(settings.avatars_config_path, 'r') as f:
@@ -575,7 +833,7 @@ async def get_available_avatars():
 
 @app.get("/api/stats")
 async def get_stats(db: AsyncSession = Depends(get_db)):
-    """Get application statistics."""
+    """get application statistics"""
     msg_count = await db.execute(select(func.count(Message.id)))
     reaction_count = await db.execute(select(func.count(Reaction.id)))
     
@@ -588,7 +846,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint."""
+    """health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 

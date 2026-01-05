@@ -1,17 +1,23 @@
 // Variables & Theming (must be first!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!)
-@import 'variables';
+@use 'variables' as *;
 
 // Base styles & Reset
-@import 'base';
+@use 'base' as *;
 
 // Animations & Transitions
-@import 'animations';
+@use 'animations' as *;
 
 // UI Components
-@import 'components';
+@use 'components' as *;
+@use 'components/messageBubble' as *;
+@use 'components/reactionPicker' as *;
+@use 'components/adminPanel' as *;
+@use 'components/gifPicker' as *;
+@use 'components/linkPreview' as *;
+@use 'components/emojiStickerPicker' as *;
 
 // Modals & Overlays
-@import 'modals';
+@use 'modals' as *;
 
 // Pages / Views
-@import 'pages';
+@use 'pages' as *;
