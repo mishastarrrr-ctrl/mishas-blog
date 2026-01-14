@@ -74,7 +74,9 @@ function handleClose() {
 }
 
 function handleDelete() {
-  emit('delete')
+  if (confirm('Delete this message?')) {
+    emit('delete')
+  }
 }
 
 function handleClickOutside(e) {
@@ -102,6 +104,17 @@ onUnmounted(() => {
       <button class="compact-option close-btn" @click.stop="handleClose" title="Close">
         <Icon name="close" :size="14" />
       </button>
+
+      <button 
+        v-if="isAdmin" 
+        class="compact-option delete-btn-compact" 
+        @click.stop="handleDelete" 
+        title="Delete message"
+      >
+        <Icon name="trash" :size="14" />
+      </button>
+      
+      <div v-if="isAdmin" style="width: 1px; height: 16px; background: rgba(0,0,0,0.1); margin: 0 2px;"></div>
       
       <button 
         v-for="val in recentEmojis" 
@@ -120,15 +133,6 @@ onUnmounted(() => {
 
       <button class="compact-option add-btn" @click.stop="isExpanded = true" title="More reactions">
         <Icon name="plus" :size="16" />
-      </button>
-      
-      <button 
-        v-if="isAdmin" 
-        class="compact-option delete-btn-compact" 
-        @click.stop="handleDelete" 
-        title="Delete message"
-      >
-        <Icon name="trash" :size="16" />
       </button>
     </div>
 
