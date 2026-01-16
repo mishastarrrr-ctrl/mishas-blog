@@ -17,8 +17,13 @@
   color: inherit;
   transition: background-color 0.15s;
   border: 1px solid rgba(0,0,0,0.05);
+
   cursor: pointer;
-  max-width: 320px; 
+
+  width: 320px;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   height: 80px;
 
   &:hover {

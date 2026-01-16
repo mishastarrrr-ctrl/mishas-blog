@@ -432,7 +432,12 @@ function cancelLongPress() {
         </div>
 
         <div v-if="showReactionPicker" class="reaction-picker-wrapper">
-           <ReactionPicker @select="handlePickerSelect" />
+           <ReactionPicker 
+             :is-admin="isAdmin"
+             @select="handlePickerSelect" 
+             @close="showReactionPicker = false"
+             @delete="emit('delete', message.id)"
+           />
         </div>
         
         <div v-if="message.reactions?.length" class="reactions-container" :class="{ 'justify-end': message.is_admin }">
